@@ -1,1 +1,103 @@
-Hello
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortune Cookie</title>
+    <style>
+        body {
+            background-color: black;
+            color: limegreen;
+            font-family: "Courier New", monospace;
+            text-align: center;
+            padding-top: 50px;
+        }
+        .cookie {
+            font-size: 50px;
+            cursor: pointer;
+            transition: transform 0.3s ease-in-out;
+        }
+        .cookie:hover {
+            transform: scale(1.2);
+        }
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: black;
+            border: 2px solid limegreen;
+            padding: 20px;
+            width: 300px;
+            box-shadow: 0px 0px 10px limegreen;
+        }
+        .popup button {
+            margin-top: 10px;
+            background: limegreen;
+            color: black;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+    <script>
+        const fortunes = [
+            "You will find a great opportunity soon.",
+            "A journey of a thousand miles begins with a single step.",
+            "Happiness comes from within, not from fortune cookies!",
+            "Beware of low-flying ducks.",
+            "Your code will compile on the first try... maybe.",
+            "The best way to predict the future is to invent it.",
+            "Don't trust atoms, they make up everything!"
+        ];
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                let date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            let nameEQ = name + "=";
+            let ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i].trim();
+                if (c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+            }
+            return null;
+        }
+
+        function crackCookie() {
+            let fortune = getCookie("fortune");
+
+            // If there's no saved fortune, generate a new one
+            if (!fortune) {
+                fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
+                setCookie("fortune", fortune, 1);  // Store for 1 day
+            }
+
+            document.getElementById("fortuneText").innerText = fortune;
+            document.getElementById("fortunePopup").style.display = "block";
+        }
+
+        function closePopup() {
+            document.getElementById("fortunePopup").style.display = "none";
+        }
+    </script>
+</head>
+<body>
+    <h1>🔮 Crack Open Your Fortune Cookie 🔮</h1>
+    <p class="cookie" id="cookie" onclick="crackCookie()">🍪</p>
+
+    <div id="fortunePopup" class="popup">
+        <p id="fortuneText"></p>
+        <button onclick="closePopup()">Close</button>
+    </div>
+</body>
+</html>
+

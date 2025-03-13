@@ -51,6 +51,13 @@ body {
     animation: fall linear infinite;
 }
 
+html .sakana-box{
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  transform-origin: 100% 100%;
+}
+
 @keyframes fall {
     0% { transform: translateY(0px); opacity: 1; }
     100% { transform: translateY(100vh); opacity: 0; }

@@ -1,0 +1,58 @@
+/* General Page Styling */
+body {
+    background-color: black;
+    color: limegreen;
+    font-family: "Courier New", monospace;
+    text-align: center;
+    padding-top: 50px;
+    overflow: hidden; /* Prevents scrollbar from stars */
+}
+
+/* Fortune Cookie Icon */
+.cookie {
+    font-size: 50px;
+    cursor: pointer;
+    transition: transform 0.3s ease-in-out;
+}
+.cookie:hover {
+    transform: scale(1.2);
+}
+
+/* Pop-up Style */
+.popup {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: black;
+    border: 2px solid limegreen;
+    padding: 20px;
+    width: 300px;
+    box-shadow: 0px 0px 10px limegreen;
+}
+.popup button {
+    margin-top: 10px;
+    background: limegreen;
+    color: black;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+/* Star Animation */
+.star {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background-color: white;
+    opacity: 0.8;
+    border-radius: 50%;
+    animation: fall linear infinite;
+}
+
+@keyframes fall {
+    0% { transform: translateY(0px); opacity: 1; }
+    100% { transform: translateY(100vh); opacity: 0; }
+}
+

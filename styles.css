@@ -8,6 +8,15 @@ body {
     overflow: hidden; /* Prevents scrollbar from stars */
 }
 
+.text {
+    background-color: black;
+    color: white;
+    font-family: "Courier New", monospace;
+    text-align: left;
+    padding-left: 50px;
+    overflow: hidden; /* Prevents scrollbar from stars */
+}
+
 /* Fortune Cookie Icon */
 .cookie {
     font-size: 50px;

@@ -8,7 +8,7 @@ body {
     overflow: hidden; /* Prevents scrollbar from stars */
 }
 
-.text {
+.normtxt {
     background-color: black;
     color: white;
     font-family: "Courier New", monospace;

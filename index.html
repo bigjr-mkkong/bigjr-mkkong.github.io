@@ -36,9 +36,16 @@
     <div class="sakana-box">
         <script src="https://cdn.jsdelivr.net/npm/sakana"></script>
             <script>
+            function get_scale() {
+                const width = window.innerWidth;
+                if (width < 480) return 0.3;
+                if (width < 768) return 0.4;
+                return 0.5;                 
+            }
+
             Sakana.init({
               el:         '.sakana-box',     
-              scale:      .5,                
+              scale:      get_scale(),                
               canSwitchCharacter: true,      
             });
         </script>

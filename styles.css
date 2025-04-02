@@ -5,7 +5,7 @@ body {
     font-family: "Courier New", monospace;
     text-align: center;
     padding-top: 50px;
-    overflow: hidden; /* Prevents scrollbar from stars */
+    overflow: scroll; /* Prevents scrollbar from stars */
 }
 
 .normtxt {
@@ -15,6 +15,14 @@ body {
     text-align: left;
     padding-left: 50px;
     overflow: hidden; /* Prevents scrollbar from stars */
+}
+
+.center_pic {
+    width: 80vw;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: auto;
 }
 
 /* Fortune Cookie Icon */

@@ -3,8 +3,6 @@ layout: default
 title: Blog
 ---
 
-<!DOCTYPE html>
-<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,10 +12,12 @@ title: Blog
     <link rel="stylesheet" href="../styles.css">
 
     <!-- Load JavaScript -->
-    <script defer src="../stars.js"></script>         <!-- Falling star effect -->
+    <script defer src="../stars.js"></script>
 </head>
+
 <body>
-    <h1>Blog(s)</h1>
+<h1>Blog(s)</h1>
+
 
 <div class="normtxt">
   <h3>2025</h3>
@@ -30,35 +30,4 @@ title: Blog
   </ul>
 </div>
 
-    <div class="sakana-box">
-        <script src="https://cdn.jsdelivr.net/npm/sakana"></script>
-            <script>
-            function get_scale() {
-                const width = window.innerWidth;
-                if (width <= 480) return 0.0;
-                if (width <= 768) return 0.3;
-                return 0.5;                 
-            }
-
-                function initSakana() {
-      document.querySelector('.sakana-box').innerHTML = '';
-
-      Sakana.init({
-        el: '.sakana-box',
-        scale: get_scale(),
-        canSwitchCharacter: true,
-      });
-    }
-
-    initSakana();
-
-    window.addEventListener('resize', () => {
-      initSakana();
-    });
-        </script>
-    </div>
 </body>
-
-
-</html>
-

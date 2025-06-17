@@ -1,33 +1,10 @@
 ---
 layout: default
-title: Blog
+title: Blogs
 ---
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BIGJR-Publication</title>
+<h2>Recent Posts</h2>
+<ul>
+    <li><a href="{{ post.url }}">{{ post.title }}</a></li>
+</ul>
 
-    <!-- Load CSS -->
-    <link rel="stylesheet" href="../styles.css">
-
-    <!-- Load JavaScript -->
-    <script defer src="../stars.js"></script>
-</head>
-
-<body>
-<h1>Blog(s)</h1>
-
-
-<div class="normtxt">
-  <h3>2025</h3>
-  <ul>
-    {% for post in site.posts %}
-      <li>
-        <a href="{{ post.url }}">{{ post.title }}</a> - {{ post.date | date: "%B %d, %Y" }}
-      </li>
-    {% endfor %}
-  </ul>
-</div>
-
-</body>

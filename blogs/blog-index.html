@@ -12,11 +12,17 @@
     <script defer src="../stars.js"></script>         <!-- Falling star effect -->
 </head>
 <body>
-    <h1>Publication(s)</h1>
+    <h1>Blog(s)</h1>
 
     <div class="normtxt">
         <h3>2024</h3>
-        <a href="./papers/control-logic-synthesis.pdf">Zachary D. Sisco, Andrew David Alex, Zechen Ma, Yeganeh Aghamohammadi, Boming Kong, Benjamin Darnell, Timothy Sherwood, Ben Hardekopf, and Jonathan Balkind. 2025. Control Logic Synthesis: Drawing the Rest of the OWL. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 4 (ASPLOS '24). Association for Computing Machinery, New York, NY, USA, 63–78. https://doi.org/10.1145/3622781.3674170</a>
+        <ul>
+  {% for post in site.posts %}
+    <li>
+      <a href="{{ post.url }}">{{ post.title }}</a> - {{ post.date | date: "%B %d, %Y" }}
+    </li>
+  {% endfor %}
+</ul>
     </div>
 
     <div class="sakana-box">

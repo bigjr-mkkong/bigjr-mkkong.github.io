@@ -35,6 +35,7 @@
 
         <ul>
             <li> <a href="./publications/pub-index.html">Publications</a> </li>
+            <li> <a href="./blogs/blog-index.html">Blogs</a> </li>
         </ul>
 
     </div>
@@ -48,16 +49,26 @@
             <script>
             function get_scale() {
                 const width = window.innerWidth;
-                if (width < 480) return 0.3;
-                if (width < 768) return 0.4;
+                if (width <= 480) return 0.0;
+                if (width <= 768) return 0.3;
                 return 0.5;                 
             }
 
-            Sakana.init({
-              el:         '.sakana-box',     
-              scale:      get_scale(),                
-              canSwitchCharacter: true,      
-            });
+                function initSakana() {
+      document.querySelector('.sakana-box').innerHTML = '';
+
+      Sakana.init({
+        el: '.sakana-box',
+        scale: get_scale(),
+        canSwitchCharacter: true,
+      });
+    }
+
+    initSakana();
+
+    window.addEventListener('resize', () => {
+      initSakana();
+    });
         </script>
     </div>
 </body>

@@ -1,5 +1,5 @@
 ---
-layout: post
+layout: default
 title: "Hello world"
 date: 2025-06-17
 ---

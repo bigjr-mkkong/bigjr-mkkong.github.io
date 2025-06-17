@@ -13,14 +13,13 @@
 </head>
 <body>
 
-      <header style="text-align: center; padding: 1rem;">
-    <a href="/index.html" style="color: #00ffff; margin-right: 1rem;">Home</a>
-    <a href="/blogs/blog-index.html" style="color: #00ffff;">Blog List</a>
-  </header>
 
   <div class="normtxt">
     <article>
       <h2>{{ page.title }}</h2>
+    <a href="/index.html">[Home]</a>
+    </br>
+    <a href="/blogs/blog-index.html">[Blog List]</a>
       <p><em>{{ page.date | date: "%B %d, %Y" }}</em></p>
       <div class="post-content">
         {{ content }}

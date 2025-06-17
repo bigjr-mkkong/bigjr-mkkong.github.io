@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }}</title>
+
+    <!-- Load CSS -->
+    <link rel="stylesheet" href="../styles.css">
+
+    <!-- Load JavaScript -->
+    <script defer src="../stars.js"></script>         <!-- Falling star effect -->
+</head>
+<body style="background-color: #121212; color: white; font-family: sans-serif;">
+
+  <header style="padding: 1rem; text-align: center;">
+    <h1><a href="/" style="color: #00ffff; text-decoration: none;">Blog(s)</a></h1>
+    <nav>
+      <a href="/index.html" style="margin: 0 1rem; color: #00ffff;">Home</a>
+      <a href="/blogs/blog-index.html" style="margin: 0 1rem; color: #00ffff;">Blogs</a>
+    </nav>
+  </header>
+
+  <main class="normtxt">
+    <article>
+      <h2 style="margin-top: 1.5rem;">{{ page.title }}</h2>
+      <p><em>{{ page.date | date: "%B %d, %Y" }}</em></p>
+      <div class="post-content">
+        {{ content }}
+      </div>
+    </article>
+  </main>
+
+  <footer style="margin-top: 4rem; text-align: center; font-size: 0.8rem;">
+    <p>&copy; {{ site.time | date: "%Y" }} BIGJR</p>
+  </footer>
+
+    <div class="sakana-box">
+        <script src="https://cdn.jsdelivr.net/npm/sakana"></script>
+            <script>
+            function get_scale() {
+                const width = window.innerWidth;
+                if (width <= 480) return 0.0;
+                if (width <= 768) return 0.3;
+                return 0.5;                 
+            }
+
+                function initSakana() {
+      document.querySelector('.sakana-box').innerHTML = '';
+
+      Sakana.init({
+        el: '.sakana-box',
+        scale: get_scale(),
+        canSwitchCharacter: true,
+      });
+    }
+
+    initSakana();
+
+    window.addEventListener('resize', () => {
+      initSakana();
+    });
+        </script>
+    </div>
+</body>
+</html>
+

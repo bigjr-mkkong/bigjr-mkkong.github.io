@@ -1,0 +1,9 @@
+title: My Simple Blog
+description: A minimalist Jekyll site
+baseurl: ""  # Leave this empty unless you're deploying to a subdirectory
+url: ""      # Optional
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM

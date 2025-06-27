@@ -9,13 +9,25 @@ body {
 }
 
 .normtxt {
-    background-color: black;
-    color: white;
-    font-family: "Courier New", monospace;
-    text-align: left;
-    padding-left: 10%;
-    padding-right: 10%;
-    overflow: hidden; /* Prevents scrollbar from stars */
+  background-color: black;
+  color: white;
+  font-family: "Courier New", monospace;
+  text-align: left;
+  padding-left: 10%;
+  padding-right: 10%;
+  overflow: hidden;
+}
+
+/* Reapply styles after reset */
+.normtxt .code-scope .highlight {
+  background-color: #1e1e1e;
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: monospace;
+  display: block;
+  white-space: pre;
+  line-height: 1.4;
 }
 
 .center_pic {

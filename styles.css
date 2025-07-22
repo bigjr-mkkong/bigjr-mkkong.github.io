@@ -30,6 +30,16 @@ body {
   line-height: 1.4;
 }
 
+.normtxt code {
+  /* background-color: #2d2d2d; */
+  color: #f8f8f2;
+  font-family: monospace;
+  font-size: 0.95em;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  /* white-space: nowrap; */
+}
+
 .center_pic {
     display: flex;
     justify-content: center;
@@ -60,7 +70,7 @@ a:hover {
     transition: transform 0.3s ease-in-out;
 }
 .cookie:hover {
-    transform: scale(1.2);
+    transform: scale(1.1);
 }
 
 /* Pop-up Style */

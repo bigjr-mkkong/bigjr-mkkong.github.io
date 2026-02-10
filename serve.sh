@@ -8,7 +8,7 @@ NGINX_CONTAINER_NAME="jekyll_site_nginx"
 PORT=8080
 
 docker run --rm \
-  -v "$SITE_DIR:/srv/jekyll" \
+  -v "$SITE_DIR:/srv/jekyll:z" \
   jekyll/jekyll \
   jekyll build
 
@@ -24,7 +24,7 @@ fi
 
 docker run --rm -d \
   --name $NGINX_CONTAINER_NAME \
-  -v "$BUILD_DIR:/usr/share/nginx/html:ro" \
+  -v "$BUILD_DIR:/usr/share/nginx/html:z" \
   -p $PORT:80 \
   nginx
 

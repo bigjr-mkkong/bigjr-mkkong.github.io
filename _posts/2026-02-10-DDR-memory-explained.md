@@ -19,7 +19,8 @@ This blog will mainly focus on regular DDR memory, specifically, DDR4. So yeah, 
 6. Break the conceptual mode for subarray
 7. Sense-amplifier
 8. DRAM repair
-9. tbd...
+9. DRAM chip-level reverse engineering
+10. tbd...
 
 
 ## DRAM conceptual model
@@ -45,10 +46,73 @@ This sequence can be applied on DRAM cell array which looks like this:
 
 [PICTURE OF DRAM CELL ARRAY]
 
-During the ACTIVATION phase, the access transistor for a row of cell will connect its correspond capacitor with the bitline next to it. Bitlines are all connected with a row buffer which will "buffer" the data in capacitor and they are ready for future READ/WRITE.
+During the ACTIVATION phase, the access transistor for a whole row of cell will connect its correspond capacitor with the bitline next to it. Bitlines are all connected with a row buffer which will "buffer" the data in capacitor and they are ready for future READ/WRITE.
 
 During READ/WRITE phase, CPU can read/write from/to the row buffer, and row buffer will reflect the changes made by CPU into those connected capacitor.
 
 During PRECHARGE phase, access transistor will close and buffer will be set into "default" state and ready for next ACTIVATION.
 
 This is a conceptual model of how DRAM works internally.
+
+
+## Memory controller and DDR commands
+As all kinds of storage devices(from DFF array to HDD disk), they are designed as a command receiver which basically receive the requests and bring back data. The way we access DFF array is by pumping it with clock signal and assert R/W port in correct time. For DRAM, we do not have such convenient way to access. Instead, we use specific command to tell DRAM when to do what. These commands is called DDR command.
+
+This can be a weird thing to think about. The way we access memory in C looks like:
+
+```c
+int a = *(int*)addr;
+```
+
+And even if we write above code into assembly, it would looks like this:
+
+```
+ld $t0, 0($a3)
+```
+
+There's never any "DDR" command on example above, so who use DDR command?
+
+The answer is memory controller.
+
+Appearantly DRAM itself is not smart enough to understand when CPU said "Please give me data in address 0xdeadbeef". They are optimized for holding as much data as possible and cheap as possible. Typically they do not have the ability to run logics on it. It's relying on CPU to tell what to do next. The command it received from CPU is called DDR command and it looks like this:
+
+```
+ACT row x, READ column y, WRITE column z, Close row x
+```
+
+There's a small components in CPU side which translate regular memory read/write requests into those sequence of DDR command.
+
+[DIE SHOT OF MC]
+
+DDR commands also have different execution time. They are written in JEDEC DDR standard and they are always constant. For example, ACT tooks 15ns to execute and RD/WR only takes 4ns. Memory controller should handle both the next command and the timing to issue the next command, since DRAM is too "stupid" to figure out what's going on.
+
+
+## DDR commands timing
+
+There are a lot of timing parameter tied with DDR issue system. They are designed to meet certain kinds of timing&power constraints. This section will explain following DDR timing parameters:
+
+- tCK
+- tRAS
+- tCAS
+- tRCD
+- tRP
+- tCCD\_S && tCCD\_L
+- tREFI
+- tRFC
+- tRPRE
+- tWPRE
+- tRRD\_S && tRRD\_L
+- tWTR\_S && tWTR\_L
+- tFAW
+- tCKE
+- tCKESR
+- tXS
+- tXP
+- tRTRS
+- tRTP
+- tWR
+
+There are even more parameters in spec, I just picked some of them which I care the most. 
+
+`tCK` is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
+

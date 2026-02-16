@@ -77,8 +77,10 @@ The answer is memory controller.
 Appearantly DRAM itself is not smart enough to understand when CPU said "Please give me data in address 0xdeadbeef". They are optimized for holding as much data as possible and cheap as possible. Typically they do not have the ability to run logics on it. It's relying on CPU to tell what to do next. The command it received from CPU is called DDR command and it looks like this:
 
 ```
-ACT row x, READ column y, WRITE column z, Close row x
+ACT row x, READ column y, WRITE column z, PRE(precharge) row x
 ```
+
+Precharge can be understood as "close" a row. This is not true as we went further but for now lets assume it's true.
 
 There's a small components in CPU side which translate regular memory read/write requests into those sequence of DDR command.
 
@@ -93,7 +95,7 @@ There are a lot of timing parameter tied with DDR issue system. They are designe
 
 - tCK
 - tRAS
-- tCAS
+- tCAS(tCL)
 - tRCD
 - tRP
 - tCCD\_S && tCCD\_L
@@ -116,3 +118,4 @@ There are even more parameters in spec, I just picked some of them which I care 
 
 `tCK` is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
 
+`tRAS` stand for "Row Access Strobe". It represent the minimum amount of time between ACT and PRE. This parameter limits MC cannot issue an ACT and PRE back-to-back. It has to wait until the tRAS passed. The reason for such limitation will be explained when we talking about transistor level design.

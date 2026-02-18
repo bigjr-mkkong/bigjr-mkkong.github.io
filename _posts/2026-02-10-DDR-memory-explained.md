@@ -17,7 +17,7 @@ This blog will mainly focus on regular DDR memory, specifically, DDR4. So yeah, 
 4. DRAM hierarchy
 5. Conceptual model for subarray
 6. Break the conceptual mode for subarray
-7. Sense-amplifier
+7. Sense-amplifier(SA)
 8. DRAM repair
 9. DRAM chip-level reverse engineering
 10. tbd...
@@ -88,6 +88,9 @@ There's a small components in CPU side which translate regular memory read/write
 
 DDR commands also have different execution time. They are written in JEDEC DDR standard and they are always constant. For example, ACT tooks 15ns to execute and RD/WR only takes 4ns. Memory controller should handle both the next command and the timing to issue the next command, since DRAM is too "stupid" to figure out what's going on.
 
+The way MC issue DDR commands is like a queue. MC will post the command type and when to issue info into a queue, and issuer will send the command out when it's the time. For example, if it's clock 8 right now and I want to issue an RD in clock 12, I will push my request into the queue, and this request will goes out when it's 12 in clock.
+
+It's kinda weird to find each command in DRAM subsystem have a thing called timing. In regular FPGA programming, if we are access one module from another, we only needs a val-rdy handshake to guarantee the timing correctness and data integrity. However, DRAM isn't even cleaver enough to hold massive amount of state of its own banks. In this way, the command sender needs to have some kinds of agreement with receiver, and that's what we called DDR spec (by JEDEC ofc).
 
 ## DDR commands timing
 
@@ -119,3 +122,27 @@ There are even more parameters in spec, I just picked some of them which I care 
 `tCK` is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
 
 `tRAS` stand for "Row Access Strobe". It represent the minimum amount of time between ACT and PRE. This parameter limits MC cannot issue an ACT and PRE back-to-back. It has to wait until the tRAS passed. The reason for such limitation will be explained when we talking about transistor level design.
+
+`tCAS`(or tCL) stand for "Column Address Strobe". It measure the latency between the time when MC issue the RD and gets the data back, AKA the latency taken for a single read.
+
+`tRCD` stand for "RAS to CAS delay", it measure the time taken between ACT being issued and row ready for column command. It's easy to confuse with tRAS. The difference is, PRE is not column command, and it needs to wait until tRAS as satisfied, while RD/WR are column command, which only needs to wait until tRCD is satisfied. The reason for this will be covered when we talk about transistor level design.
+
+`tRP` stand for "Row Precharge". It means the time taken for single PRE command. Be aware the earlist timing to have precharge is tRAS after the last ACT. I will also cover the Precharge operation when we talked about transistor level design for Sense Amplifier.
+
+`tCCD_S && tCCD_L` stand for "Column to Column Delay(Short/Long)". This marks the minimum timing between issue two column command(RD/WR). In this case, MC cannot issue RD/WR command too fast, since that would cause problems in DRAM data integrity. The reason why we need Short/Long marks is the new technology introduced by DDR4 called bank groups. Bank group can be understand as an intermediate layer between channel and bank. Assume we have 32 banks per channel, to have 4 bank groups means we have 8 banks goes into one bank group. Bank groups share teh same address decoder, they also have their own local IO buses and SAs. Bank group are designed to fix the scalability issue of DRAM, as the storage density increase, the corresponding address decoder as well as bus wire also gets bigger. Designer divide whole structure into bank groups to keep boosting DRAM frequency.
+
+It's faster for two RD to goes into different bank groups other than same one, because they do not have to share the same decoder and same local bus(still share the global bus since there's only one global bus, but it's okey). In this case, `tCCD_S` is the minimum latency between two column command being issued when they target on different bank group, and `tCCD_L` is the the minimum latency between two column command being issued when they target on same bank group.
+
+`tREFI` stand for "Refresh Interval". As the name reveal, it stand for how often a REFRESH command must be issued. As you probably already know, DRAM is neither self-amplified storage as SRAM/DFF nor permanent storage media like magnetic tape(or carving words on stones?). It needs to constantly read out what it got and re-amplify them. `tREFI` marks the period of doing such operation.
+
+`tRFC` stand for "ReFresh Cycle time". It stand for the time taken for DRAM to perform refresh. When DRAM performing refresh, no other DDR commands can be served and DRAM is basically passed away for `tRFC` amount of time.
+
+`tRPRE` stand for "Read PREamble time", which marks the pre-sampling delay from higher level. This is an internal timing parameter for interfacing which sit inside tCAS. The reason why we need to wait a while between data valid and sampling start is, DQ(data pin) are synchronized with DQS, but CK is the clock signal when we talked about DRAM operation like ACT/PRE/RD/WR. CK needs to travel a really long route from cpu to every DRAM chip, which can have serious clock skew problem. This means the CK we referred in sampling logic is not reliable for high-speed signal. In this case, DDR gives us another new clock signal called DQS. As the name suggested, it's the Sampling clock for DQ. DQS `tRPRE` is the time taken for DRAM to reset sampling logic and it's necessary for safe sampling to valid data.
+
+`tWPRE` stand for "Write PREamble time". It's basically same as tRPRE. The only place to notice is, DQ is a bidirectional signal wire, so for each column command, we need to go through the complete reset procedue of sampling. This means, both tRPRE and tWPRE is a part of tCAS.
+
+There appearantly needs some CDC designs done to bridge two clock domain together. However, DRAM vendors are always slient on what exactly happening under the hood so we cannot know(We can make best guess tho). There are some research about DRAM reverse-engineering, but they mainly focused on subarray level design instead of interfacing. I'll talk about that research in this blog. And I really hope either vendor release more DRAM internal designs, or someone use SEM(scanning electron microscopy) to peel the DRAM and look it up.
+
+`tRRD_S && tRRD_L` stand for "Row to Row Delay(Short/Long)". It measure the minimal time between two success ACT being issued. `tRRD_S/L` bound the frequency of issue ACT into different bank. Just like `tCCD_S/L` differ the access into same/different bank group, `tRRD_S/L` also differ the ACT goes into same/different bank group. The reason is also the same: different bank groups can have less confliction in parts use.
+
+

@@ -6,14 +6,16 @@ date: 2026-02-09
 
 ## Introduction
 
-The reason why I wrote this blog is I found a lot of articles and paper in DRAM area tend to use a simplified DRAM model and propose their design over this conceptual model. Honestly speaking, there is no problem with it since academic research and idea brainstorm does not need to consider many complex real-world problems(also, DRAM vendor are always slience on whats going on under the hood). However, I also realized there aren't many article talking about real-world design/manufacture problems in DRAM area. In this case, I am going to talk some of them.
+The reason why I wrote this blog is I found a lot of articles and paper in DRAM area tend to use a simplified DRAM model and propose their design over this conceptual model. Honestly speaking, there is no problem with it since academic research and idea brainstorm does not need to consider many complex real-world problems(also, DRAM vendor are always slience on whats going on irl so we don't know anything). However, I also realized all the articles and papers in DRAM research does not have a complete background introduction that can actually give a full picture of what is DDR DRAM and what's the pitfalls and constraints in DRAM design. In this case, I am going to talk some of them.
 
 This blog will mainly focus on regular DDR memory, specifically, DDR4. So yeah, no DDR5 or some crazy GDDR or HBM architecture. However, both of them are also interesting to discover and I'll post some papers which I found super helpful.
 
+This blog will also be a periodic update one, since DRAM vendor are so slient so there are always something new waiting for people to discover. All updated content will be placed in Updates section
+
 ## Index
-1. DRAM conceptual model
-2. Memory controller and DDR commands
-3. DDR commands timing
+1. [DRAM conceptual model](#dram-conceptual-model)
+2. [Memory controller and DDR commands](#memory-controller-and-ddr-commands)
+3. [DDR commands timing](#ddr-commands-timing)
 4. DRAM hierarchy
 5. Conceptual model for subarray
 6. Break the conceptual mode for subarray
@@ -21,6 +23,7 @@ This blog will mainly focus on regular DDR memory, specifically, DDR4. So yeah, 
 8. DRAM repair
 9. DRAM chip-level reverse engineering
 10. tbd...
+11. Updates
 
 
 ## DRAM conceptual model
@@ -53,7 +56,6 @@ During READ/WRITE phase, CPU can read/write from/to the row buffer, and row buff
 During PRECHARGE phase, access transistor will close and buffer will be set into "default" state and ready for next ACTIVATION.
 
 This is a conceptual model of how DRAM works internally.
-
 
 ## Memory controller and DDR commands
 As all kinds of storage devices(from DFF array to HDD disk), they are designed as a command receiver which basically receive the requests and bring back data. The way we access DFF array is by pumping it with clock signal and assert R/W port in correct time. For DRAM, we do not have such convenient way to access. Instead, we use specific command to tell DRAM when to do what. These commands is called DDR command.
@@ -99,6 +101,7 @@ There are a lot of timing parameter tied with DDR issue system. They are designe
 - tCK
 - tRAS
 - tCAS(tCL)
+- tCWL
 - tRCD
 - tRP
 - tCCD\_S && tCCD\_L
@@ -108,41 +111,49 @@ There are a lot of timing parameter tied with DDR issue system. They are designe
 - tWPRE
 - tRRD\_S && tRRD\_L
 - tWTR\_S && tWTR\_L
-- tFAW
-- tCKE
-- tCKESR
-- tXS
-- tXP
-- tRTRS
 - tRTP
 - tWR
+- tFAW
 
-There are even more parameters in spec, I just picked some of them which I care the most. 
+There are even more parameters in spec, I just picked some of them that I care the most. 
 
-`tCK` is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
+The following will just be a re-interpretation of JEDEC spec. Spec didn't tell about what exactly are these timning parameters means(it do have waveform for each of them and a short description inside timing table).
 
-`tRAS` stand for "Row Access Strobe". It represent the minimum amount of time between ACT and PRE. This parameter limits MC cannot issue an ACT and PRE back-to-back. It has to wait until the tRAS passed. The reason for such limitation will be explained when we talking about transistor level design.
+---
 
-`tCAS`(or tCL) stand for "Column Address Strobe". It measure the latency between the time when MC issue the RD and gets the data back, AKA the latency taken for a single read.
+***tCK*** is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
 
-`tRCD` stand for "RAS to CAS delay", it measure the time taken between ACT being issued and row ready for column command. It's easy to confuse with tRAS. The difference is, PRE is not column command, and it needs to wait until tRAS as satisfied, while RD/WR are column command, which only needs to wait until tRCD is satisfied. The reason for this will be covered when we talk about transistor level design.
+***tRAS*** stand for "Row Access Strobe". It represent the minimum amount of time between ACT and PRE. This parameter limits MC cannot issue an ACT and PRE back-to-back. It has to wait until the tRAS passed. The reason for such limitation will be explained when we talking about transistor level design.
 
-`tRP` stand for "Row Precharge". It means the time taken for single PRE command. Be aware the earlist timing to have precharge is tRAS after the last ACT. I will also cover the Precharge operation when we talked about transistor level design for Sense Amplifier.
+***tCAS***(or tCL) stand for "Column Address Strobe". It measure the latency between the time when MC issue the RD and gets the first beats of data back. Note DRAM have a thing called "burst". This means data are sent in one chunk after one chunk, not all-at-once. ***tCAS*** only measure the latency between RD issued and first chunk of data arrived. It does not measure the whole RD delay.
 
-`tCCD_S && tCCD_L` stand for "Column to Column Delay(Short/Long)". This marks the minimum timing between issue two column command(RD/WR). In this case, MC cannot issue RD/WR command too fast, since that would cause problems in DRAM data integrity. The reason why we need Short/Long marks is the new technology introduced by DDR4 called bank groups. Bank group can be understand as an intermediate layer between channel and bank. Assume we have 32 banks per channel, to have 4 bank groups means we have 8 banks goes into one bank group. Bank groups share teh same address decoder, they also have their own local IO buses and SAs. Bank group are designed to fix the scalability issue of DRAM, as the storage density increase, the corresponding address decoder as well as bus wire also gets bigger. Designer divide whole structure into bank groups to keep boosting DRAM frequency.
+***tCWL*** stand for "CAS Wrute Latency". From the name we can derive, it's the "***tCAS***" for WR. To be more clear, it define the latenct between issue out WR and the instance when DRAM start the write burst.
 
-It's faster for two RD to goes into different bank groups other than same one, because they do not have to share the same decoder and same local bus(still share the global bus since there's only one global bus, but it's okey). In this case, `tCCD_S` is the minimum latency between two column command being issued when they target on different bank group, and `tCCD_L` is the the minimum latency between two column command being issued when they target on same bank group.
+***tRCD*** stand for "RAS to CAS delay", it measure the time taken between ACT being issued and row ready for column command. It's easy to confuse with tRAS. The difference is, PRE is not column command, and it needs to wait until tRAS as satisfied, while RD/WR are column command, which only needs to wait until tRCD is satisfied. The reason for this will be covered when we talk about transistor level design.
 
-`tREFI` stand for "Refresh Interval". As the name reveal, it stand for how often a REFRESH command must be issued. As you probably already know, DRAM is neither self-amplified storage as SRAM/DFF nor permanent storage media like magnetic tape(or carving words on stones?). It needs to constantly read out what it got and re-amplify them. `tREFI` marks the period of doing such operation.
+***tRP*** stand for "Row Precharge". It means the time taken for single PRE command. Be aware the earlist timing to have precharge is tRAS after the last ACT. I will also cover the Precharge operation when we talked about transistor level design for Sense Amplifier.
 
-`tRFC` stand for "ReFresh Cycle time". It stand for the time taken for DRAM to perform refresh. When DRAM performing refresh, no other DDR commands can be served and DRAM is basically passed away for `tRFC` amount of time.
+***tCCD\_S && tCCD\_L*** stand for "Column to Column Delay(Short/Long)". This marks the minimum timing between issue two column command(RD/WR). In this case, MC cannot issue RD/WR command too fast, since that would cause problems in DRAM data integrity. The reason why we need Short/Long marks is the new technology introduced by DDR4 called bank groups. Bank group can be understand as an intermediate layer between channel and bank. Assume we have 32 banks per channel, to have 4 bank groups means we have 8 banks goes into one bank group. Bank groups share teh same address decoder, they also have their own local IO buses and SAs. Bank group are designed to fix the scalability issue of DRAM, as the storage density increase, the corresponding address decoder as well as bus wire also gets bigger. Designer divide whole structure into bank groups to keep boosting DRAM frequency.
 
-`tRPRE` stand for "Read PREamble time", which marks the pre-sampling delay from higher level. This is an internal timing parameter for interfacing which sit inside tCAS. The reason why we need to wait a while between data valid and sampling start is, DQ(data pin) are synchronized with DQS, but CK is the clock signal when we talked about DRAM operation like ACT/PRE/RD/WR. CK needs to travel a really long route from cpu to every DRAM chip, which can have serious clock skew problem. This means the CK we referred in sampling logic is not reliable for high-speed signal. In this case, DDR gives us another new clock signal called DQS. As the name suggested, it's the Sampling clock for DQ. DQS `tRPRE` is the time taken for DRAM to reset sampling logic and it's necessary for safe sampling to valid data.
+It's faster for two RD to goes into different bank groups other than same one, because they do not have to share the same decoder and same local bus(still share the global bus since there's only one global bus, but it's okey). In this case, ***tCCD\_S*** is the minimum latency between two column command being issued when they target on different bank group, and ***tCCD\_L*** is the the minimum latency between two column command being issued when they target on same bank group.
 
-`tWPRE` stand for "Write PREamble time". It's basically same as tRPRE. The only place to notice is, DQ is a bidirectional signal wire, so for each column command, we need to go through the complete reset procedue of sampling. This means, both tRPRE and tWPRE is a part of tCAS.
+***tREFI*** stand for "Refresh Interval". As the name reveal, it stand for how often a REFRESH command must be issued. As you probably already know, DRAM is neither self-amplified storage as SRAM/DFF nor permanent storage media like magnetic tape(or carving words on stones?). It needs to constantly read out what it got and re-amplify them. ***tREFI*** marks the period of doing such operation.
+
+***tRFC*** stand for "ReFresh Cycle time". It stand for the time taken for DRAM to perform refresh. When DRAM performing refresh, no other DDR commands can be served and DRAM is basically passed away for ***tRFC*** amount of time.
+
+***tRPRE*** stand for "Read PREamble time", which marks the pre-sampling delay from higher level. This is an internal timing parameter for interfacing which sit inside tCAS. The reason why we need to wait a while between data valid and sampling start is, DQ(data pin) are synchronized with DQS, but CK is the clock signal when we talked about DRAM operation like ACT/PRE/RD/WR. CK needs to travel a really long route from cpu to every DRAM chip, which can have serious clock skew problem. This means the CK we referred in sampling logic is not reliable for high-speed signal. In this case, DDR gives us another new clock signal called DQS. As the name suggested, it's the Sampling clock for DQ. DQS ***tRPRE*** is the time taken for DRAM to reset sampling logic and it's necessary for safe sampling to valid data.
+
+***tWPRE*** stand for "Write PREamble time". It's basically same as tRPRE. The only place to notice is, DQ is a bidirectional signal wire, so for each column command, we need to go through the complete reset procedue of sampling. This means, both tRPRE and tWPRE is a part of tCAS.
 
 There appearantly needs some CDC designs done to bridge two clock domain together. However, DRAM vendors are always slient on what exactly happening under the hood so we cannot know(We can make best guess tho). There are some research about DRAM reverse-engineering, but they mainly focused on subarray level design instead of interfacing. I'll talk about that research in this blog. And I really hope either vendor release more DRAM internal designs, or someone use SEM(scanning electron microscopy) to peel the DRAM and look it up.
 
-`tRRD_S && tRRD_L` stand for "Row to Row Delay(Short/Long)". It measure the minimal time between two success ACT being issued. `tRRD_S/L` bound the frequency of issue ACT into different bank. Just like `tCCD_S/L` differ the access into same/different bank group, `tRRD_S/L` also differ the ACT goes into same/different bank group. The reason is also the same: different bank groups can have less confliction in parts use.
+***tRRD\_S && tRRD\_L*** stand for "Row to Row Delay(Short/Long)". It measure the minimal time between two success ACT being issued. ***tRRD\_S/L*** bound the frequency of issue ACT into different bank. Just like ***tCCD\_S/L*** differ the access into same/different bank group, ***tRRD\_S/L*** also differ the ACT goes into same/different bank group. The reason is also the same: different bank groups can have less confliction in parts use.
 
 
+***tWTR\_S && tWTR\_L*** stand for "Write to Read delay(Long/Short)". It represent the minimum time delay for a RD after WR. For a RD after WR which falls into same bank group will be delayed for ***tWTR\_L***. If RD after WR falls into different bank group, they are going to be delayed for ***tWTR\_S***. The reason why we have this delay is, WR command actually write to local SA of target subarray, and it tooks a while to let the data re-amplify and store safely into 1t1c cell. This process is also called "Write Recovery". It means once CPU write something back, it also recharge the cell and protect it from wear-out.
+
+***tRTP*** stand for "Read to Precharge delay". It represent the time delay from RD being issued and the point where PREC can be safely carried out. The reason is that, if we do not have this kinds of restriction, MC can issue precharge during the middle of RD. It's like you just enabled the wordline and precharge signal comes in and flush all you got in the cell. tRTP prevent this happen by delay next precharge into a time point when it can be safely carried out.
+
+***tWR*** stand for "Write Recovery delay". It measure the delay from the end of write burst to the point where MC can safely precharge DRAM. This is a little bit different from ***tRTP***. It's because DRAM write operation including the time signal travel from DQ to local SA plus local SA amplify data and charge it back to cell. If we immediately precharge the SA after the last write, what might happen is precharge signal will arrive when last data is being written but not yet amplified back. This can cause data loss. ***tWR*** will hold the precharge after WR for a while to let charge completly recovered into cell storage.
+
+***tFAW*** stand for "Four-Activate Window".  It's the time window which limits the number of activated bank in a channel. For example, if tFAW is 20 and at t=12 we already got 4 activated rows. If MC wants to activate another row within this channel at t=16, it have to wait until t >= 20 to issue the new activation. SPEC didn't tell why this exists, but people assume it's because we don't want to stress PDN too much.

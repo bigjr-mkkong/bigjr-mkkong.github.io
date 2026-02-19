@@ -16,8 +16,8 @@ This blog will also be a periodic update one, since DRAM vendor are so slient so
 1. [DRAM conceptual model](#dram-conceptual-model)
 2. [Memory controller and DDR commands](#memory-controller-and-ddr-commands)
 3. [DDR commands timing](#ddr-commands-timing)
-4. DRAM hierarchy
-5. Conceptual model for subarray
+4. [DRAM hierarchy](#dram-hierarchy)
+5. [Conceptual model for subarray](#conceptual-model-for-subarray)
 6. Break the conceptual mode for subarray
 7. Sense-amplifier(SA)
 8. DRAM repair
@@ -157,3 +157,27 @@ There appearantly needs some CDC designs done to bridge two clock domain togethe
 ***tWR*** stand for "Write Recovery delay". It measure the delay from the end of write burst to the point where MC can safely precharge DRAM. This is a little bit different from ***tRTP***. It's because DRAM write operation including the time signal travel from DQ to local SA plus local SA amplify data and charge it back to cell. If we immediately precharge the SA after the last write, what might happen is precharge signal will arrive when last data is being written but not yet amplified back. This can cause data loss. ***tWR*** will hold the precharge after WR for a while to let charge completly recovered into cell storage.
 
 ***tFAW*** stand for "Four-Activate Window".  It's the time window which limits the number of activated bank in a channel. For example, if tFAW is 20 and at t=12 we already got 4 activated rows. If MC wants to activate another row within this channel at t=16, it have to wait until t >= 20 to issue the new activation. SPEC didn't tell why this exists, but people assume it's because we don't want to stress PDN too much.
+
+
+## DRAM hierarchy
+Conceptually, DRAM is a giant big matrix of 1t1c cell controlled by extremly long wordline and bitline. However, such design is not possible to manufactured within acceptable price. In this case, DRAM designer split huge amount of 1t1c cells into multiple layers. In traditioanl DDR4 memory, they are: Channel, Rank, Bank Group,  Bank, Subarray, Row, Column,
+
+In other types of memory, there might be some difference compare to DDR4. For example HBM does not have rank, and LPDDR does not have bank group. This blog will focus on DDR4 so all below hierarchy are all in DDR4. I will talk about HBM more in next blog.
+
+### Channel
+Channel is the up-most hierarchy of DRAM. It usually takes at least 1 DIMM slot, and there's no restriction in issuing commands into two different channel. They are completly deparate hardware and do not share any global bus (if we ignore the internal DIMM bus inside CPU).
+
+### Rank
+Rank can be understood as a group of DRAM chip. DRAM chip is the black square you can found on DRAM pcb. You probably saw some DRAM parameter like ddr4 x16 3200. The x16 inside means each DRAM chip is able to provide 16bits at once. However, a single rank needs to provide 64bits output. In this case, we can calculate how many chips in one rank by using 64 / 16 = 4. Ranks are the driver for DQ pins, and there are at most one active rank at any time. CS# is the signal that MC used to select the target rank.
+
+### Bank Group
+Bank group is a new hierarhcy introduced by DDR4. It groups multiple banks together and they will share the same address decoder as well as same global data/control line. The reason is that DDR4 wants higher bandwidth compare with DDR3, but the frequency of bank is not really easy to increase (to be clear, it should be core frequency instead of bank frequency. But we haven't talked about DRAM core yet so we will use bank frequency here). Splitting banks into multiple bank groups can allow commands going to different bank group does not need to be constraints too much. For example, two column commands can pipeline the use of decode logics if we split into bank group. Without bank group, the second column command needs to wait for the first one finish and let it use the address decoder. Banks inside bankgroup do not operate in lock step. This means only one bank will be the driver of the bank group's output at anytime.
+
+### Bank
+Bank is the most important hierarchy in DRAM architecture. It consist of multiple small subarrays and sense-amplifier which is able to amplify and latch the result coming from those subarrys. Just like bank group, there can still be some parallism between bank and bank. For example, the banks in the same bank group can hold their own row buffer, but there can only be one bank be the driver for bankgroup's output.
+
+### Subarray
+Bank are made of subarray. Subarray is the actual place where you can see the matrix of 1t1c cell. Subarray usually have 8k width and 512/256 heights. Each subarray also comes with 8k sense-amplifier which is able to amplify and latch the charge in opened row. This is what we call local row buffer. The column command over local row buffer is really fast, but if program missed this row buffer, subarray needs to precharge the current SA and activate the target row.
+
+
+## Conceptual model for subarray

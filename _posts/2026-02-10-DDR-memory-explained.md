@@ -19,7 +19,7 @@ This blog will also be a periodic update one, since DRAM vendor are so slient so
 4. [DRAM hierarchy](#dram-hierarchy)
 5. [Conceptual model for subarray](#conceptual-model-for-subarray)
 6. [Break the conceptual model for subarray](#break-the-conceptual-model-for-subarray)
-7. Sense-amplifier(SA)
+7. [Sense Amplifier](#sense-amplifier)
 8. DRAM repair
 9. DRAM chip-level reverse engineering
 10. tbd...
@@ -177,22 +177,72 @@ Bank group is a new hierarhcy introduced by DDR4. It groups multiple banks toget
 Bank is the most important hierarchy in DRAM architecture. It consist of multiple small subarrays and sense-amplifier which is able to amplify and latch the result coming from those subarrys. Just like bank group, there can still be some parallism between bank and bank. For example, the banks in the same bank group can hold their own row buffer, but there can only be one bank be the driver for bankgroup's output.
 
 ### Subarray
-Bank are made of subarray. Subarray is the actual place where you can see the matrix of 1t1c cell. Subarray usually have 8k width and 512/256 heights. Each subarray also comes with 8k sense-amplifier which is able to amplify and latch the charge in opened row. This is what we call local row buffer. The column command over local row buffer is really fast, but if program missed this row buffer, subarray needs to precharge the current SA and activate the target row.
+Bank are made of subarray. Subarray is the actual place where you can see the matrix of 1t1c cell. Subarray usually have 8k width and 512/256 heights. Each subarray also comes with 8k sense-amplifier which is able to amplify and latch the charge in activaated row. This is what we call local row buffer. The column command over local row buffer is really fast, but if program missed this row buffer, subarray needs to precharge the current SA and activate the target row.
 
 
 ## Conceptual model for subarray
 
-Subarray as the "core" of the DDR DRAM, is the place where data actually sitting in. As what we've covered previously, subarray basically is a matrix of 1t1c cells. Conceprually, when we want to access one cacheline of data from DRAM, a whole row from the target subarray will be activated, and DRAM select target data from the activated row. A row usually contain 8Kb data, but what CPU usually want is just a cacheline of data(64bytes). The access to activated data is pretty fast since DRAM do not need to re-activate another row of target data inside one subarray.
+Subarray as the "core" of the DDR DRAM, which mean it is the place where data actually sitting in. As what we've covered previously, subarray basically is a matrix of 1t1c cells. Conceprually, when we want to access one cacheline of data from DRAM, a whole row from the target subarray will be activated, and DRAM select target data from the activated row. A row usually contain 8Kb data, but what CPU usually want for single access is just a cacheline of data(64bytes). 
 
 Here is a conceptual figure of what is subarray:
 
 [SUBARRAY PICTURE]
 
-Once DRAM needs to access another row of data, it will first precharge currently activated row. This procedure will electronically disconnect bitline with cell, and then it drive whole bitline into reference voltage. After this, the new target row will be activated.
+Once DRAM needs to access another row of data, it will first precharge currently activated row. During the precharge phase, precharge controller will electronically disconnect the currently activated bitcell with bitlines to retain data within capacitor, then it drive whole bitline into reference voltage by shorts the amplifier. After ***tRP*** amount of time, memory controller will issue an ACT command which will activat another row of bitcells by connecting a whole row of bitcells with bitlines, then charge will flows into local row buffer and being latched there.
 
-Column select logic will control whether to connect the output of local rowbuffer up to global bitline(bank interface). Local row buffer is basically an array of Sense-Amplifier. Sense amplifier is able to amplify the voltage, but it can be treat as a latch. For now we just assume they are some special latch array which latch the output of activated row so they can be selected by column select logics.
+Column select logic will control whether to connect the output of local rowbuffer up to global bitline(bank interface). Local row buffer is basically an array of Sense-Amplifier. Sense amplifier is able to amplify the voltage, but it also behave like an latch(tbc, it's actually a SR latch, but drived with a reference voltage). For now we just assume they are some special latch array which latch the output of activated row so they can be selected by column select logics.
+
+Normally, one subarray can only have one activated row, and one bank can only have one activated subarray. Having multiple activated subarrys in one bank will result in charge sharing and undetermined behavior. 
+
+One bank group can have multiple activated banks, but there's ***tFAW*** timing constraints to control the time window for 4 activated banks.
 
 This subarray model is able to explain a lot of famous application of DRAM, for example, rowhammer[CITE] attack and computeDRAM[CITE]. If you just want to know how does DRAM works conceptually then here is the end.
 
-
 ## Break the conceptual model for subarray
+
+Acutally, all things above are wrong...
+
+The conceptual model can be used to explain most behavior of DRAM from the high level perspective. But once we need to customize subarray level DRAM design, there are a lot of place above doesn't really happen in real world.
+
+### Incorrect place 0: Subarray is not the last level of DRAM hierarchy
+It would be super neat if subarray is the last level. However, activation signal cannot travel all way down to 8k cells through wordline without lose it's signal integrity. Also, to have one wordline for every single row is not area efficient. In this case, DRAM vendor (afaik) further divided subarray into multiple MATS.
+
+[PICTURE OF MATS IN SUBARRAY]
+
+MATS can be imaged as a square of bitcells. Multiple mats stacked together to form a subarray. To further increase the storage capacity, vendor divided all wordlines into main wordlies and sub wordlines. Assume we have 512 rows, then we got (512/2 == 256) main wordlines and 2 sub-wordlines. Both main-wordlines and sub-wordlines are being feed into an AND gate per two mats. this AND gate can amplify the signal and drive the target rows when it's being selected by both main wordline and sub wordline.
+
+[PICTURE OF MAIN/SUB-WORDLINES]
+
+The implication behind this observation is, we cannot have fine-grain control of the row activation even if we hacked into subarray. For example, assume we only have 4 rows: 0, 1, 2, 3, and we have 4 wordlines: one for 0, 1, and one for 2, 3. Plus we also have 2 sub-wordline to select between main wordline. There is no way to activate row 0 and row 3 without activate row 2. Here is a picture to demonstrate this scenario:
+
+[PICTURE OF ACT CONFLICTION]
+
+A lot of DRAM design proposal assume fine-grain activation. Tbf they are all valid idea. The only problem is they also need to work on the special data placement inside DRAM to address this issue.
+
+### Incorrect place 1: Subarray row buffer(Sense amplifier) is being shared by adjacent subarray
+
+In previous description, each subarray has its own local row buffer. However, due to the needs of DRAM capacitor, having independent local row buffer for each subarray is not area effiicent. In this case, in open-bitline architecture(most wildly used DRAM architecture today), vendor choose to put half of the row buffer in one side of subarray and let adjacent subarray share it. The layout looks like this:
+
+[PICTURE OF SA SHARING]
+
+Another reason why split in this way is, sense amplifier needs to have a Vref to amplify the small pertubation. DRAM will use the idle(precharged) bitline from the adjacent subarray as the input of reference voltage. In this case, if one subarray is holding activated data, two adjacent subarray will lost half of its bandwidth. Here is an picture to illustrate this scenario:
+
+[PICTURE OF ONE ACTIVATED SUBARRAY AND TWO IDLE NEIGHBOR]
+
+This limination will constraints all the proposal mentioned about fine-grain subarray control. Same as Incorrect 0, they need to be clear on data placement.
+
+### Incorrect place 2: GIO is smaller than what present in picture
+
+GIO is the place where subarray's column selection logic output its result. It's being depicted as a bus to connect multiple subarray together, and sometime people think it's gonna be super cool to directly communicate through this bus. However, the bank interface is really small and due to the needs of storage capacity(Again???), this bus is really small. If we want to communicate within this narrow bus, each chunk of data needs to be sent out and latched at bank level amplifier. Then you can activate the target subarray's row and choose the correct place to write to. This procedure takes a long time and doesn't utilize the high bandwidth provided by subarray at all:
+
+[PICTURE OF NARROW GIO]
+
+If we really want in-bank communication, we need to add extra hardware to do this. LISA[CITE] is a good example, but it has more hidden constraints we'll cover later.
+
+---
+We can see, subarray level design should be carried out in cautions. We can have all crazy designs, but we need to be careful on these hidden constraints and clarify our assmption.
+
+This is not even a full list of constraints. More constraints will be reveal in future chapters when we talked about transistor level design and reverse-engineering of today(2026)'s commercial DDR DRAM.
+
+
+## Sense Amplifier

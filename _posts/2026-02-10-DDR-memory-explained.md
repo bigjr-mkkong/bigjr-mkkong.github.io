@@ -18,7 +18,7 @@ This blog will also be a periodic update one, since DRAM vendor are so slient so
 3. [DDR commands timing](#ddr-commands-timing)
 4. [DRAM hierarchy](#dram-hierarchy)
 5. [Conceptual model for subarray](#conceptual-model-for-subarray)
-6. Break the conceptual mode for subarray
+6. [Break the conceptual model for subarray](#break-the-conceptual-model-for-subarray)
 7. Sense-amplifier(SA)
 8. DRAM repair
 9. DRAM chip-level reverse engineering
@@ -181,3 +181,18 @@ Bank are made of subarray. Subarray is the actual place where you can see the ma
 
 
 ## Conceptual model for subarray
+
+Subarray as the "core" of the DDR DRAM, is the place where data actually sitting in. As what we've covered previously, subarray basically is a matrix of 1t1c cells. Conceprually, when we want to access one cacheline of data from DRAM, a whole row from the target subarray will be activated, and DRAM select target data from the activated row. A row usually contain 8Kb data, but what CPU usually want is just a cacheline of data(64bytes). The access to activated data is pretty fast since DRAM do not need to re-activate another row of target data inside one subarray.
+
+Here is a conceptual figure of what is subarray:
+
+[SUBARRAY PICTURE]
+
+Once DRAM needs to access another row of data, it will first precharge currently activated row. This procedure will electronically disconnect bitline with cell, and then it drive whole bitline into reference voltage. After this, the new target row will be activated.
+
+Column select logic will control whether to connect the output of local rowbuffer up to global bitline(bank interface). Local row buffer is basically an array of Sense-Amplifier. Sense amplifier is able to amplify the voltage, but it can be treat as a latch. For now we just assume they are some special latch array which latch the output of activated row so they can be selected by column select logics.
+
+This subarray model is able to explain a lot of famous application of DRAM, for example, rowhammer[CITE] attack and computeDRAM[CITE]. If you just want to know how does DRAM works conceptually then here is the end.
+
+
+## Break the conceptual model for subarray

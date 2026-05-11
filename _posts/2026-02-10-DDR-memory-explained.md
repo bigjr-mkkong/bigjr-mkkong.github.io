@@ -1,243 +1,193 @@
 ---
 layout: post
-title: "DDR memory explained"
+title: "DDR Memory Explained"
 date: 2026-02-09
 ---
 
 ## Introduction
 
-The reason why I wrote this blog is I found a lot of articles and paper in DRAM area tend to use a simplified DRAM model and propose their design over this conceptual model. Honestly speaking, there is no problem with it since academic research and idea brainstorm does not need to consider many complex real-world problems(also, DRAM vendor are always slience on whats going on irl so we don't know anything). However, I also realized all the articles and papers in DRAM research does not have a complete background introduction that can actually give a full picture of what is DDR DRAM and what's the pitfalls and constraints in DRAM design. In this case, I am going to talk some of them.
+The reason I wrote this blog is that I've found a lot of articles and papers in the DRAM space tend to use an overly simplified, conceptual DRAM model. Honestly speaking, there is no problem with it. Academic research and brainstorming don't always need to get bogged down by complex, real-world constraints (plus, DRAM vendors are famously secretive about what goes on under the hood, so details are scarce). 
 
-This blog will mainly focus on regular DDR memory, specifically, DDR4. So yeah, no DDR5 or some crazy GDDR or HBM architecture. However, both of them are also interesting to discover and I'll post some papers which I found super helpful.
+However, I realized that without a complete background introduction, it's hard to get a full picture of what DDR DRAM actually is, and what the real pitfalls and constraints are in DRAM design. In this blog, I am going to bridge that gap a little bit.
 
-This blog will also be a periodic update one, since DRAM vendor are so slient so there are always something new waiting for people to discover. All updated content will be placed in Updates section
+We will focus mainly on regular DDR memory—specifically, DDR4. So no DDR5, GDDR, or HBM architectures today. However, those are also incredibly interesting, and I'll post references to papers I found super helpful. 
+
+It's also worth mentioning that there are plenty of other exotic memory technologies like STT-MRAM (Spin-Transfer Torque), 2T0C/3T0C DRAM, Memristors, and PCM (Phase Change Memory). While they are incredibly fascinating to talk about, they are out of scope for this post. For the duration of this blog, every memory cell we look at will strictly be the traditional 1T1C design
+
+This will also be a periodically updated post. Since vendors are so quiet, there is always something new waiting to be discovered. All updated content will be placed in the Updates section.
 
 ## Index
-1. [DRAM conceptual model](#dram-conceptual-model)
-2. [Memory controller and DDR commands](#memory-controller-and-ddr-commands)
-3. [DDR commands timing](#ddr-commands-timing)
-4. [DRAM hierarchy](#dram-hierarchy)
-5. [Conceptual model for subarray](#conceptual-model-for-subarray)
-6. [Break the conceptual model for subarray](#break-the-conceptual-model-for-subarray)
-7. [Sense Amplifier](#sense-amplifier)
-8. DRAM repair
-9. DRAM chip-level reverse engineering
-10. tbd...
-11. Updates
+1. [The DRAM Conceptual Model](#the-dram-conceptual-model)
+2. [Memory Controllers and DDR Commands](#memory-controllers-and-ddr-commands)
+3. [DRAM Hierarchy](#dram-hierarchy)
+4. [DDR Commands Timing](#ddr-commands-timing)
+5. [The Conceptual Model for Subarrays](#the-conceptual-model-for-subarrays)
+6. [Breaking the Subarray Conceptual Model](#breaking-the-subarray-conceptual-model)
+7. [The Sense Amplifier](#the-sense-amplifier)
+8. [DRAM Repair](#dram-repair)
+9. [DRAM Chip-Level Reverse Engineering](#dram-chip-level-reverse-engineering)
+10. [Finale](#finale)
+11. [Updates](#updates)
 
+---
 
-## DRAM conceptual model
-From the perspective of software programmer, DRAM is just a super long 1D array. If you are into the UNIX philosophy, there's no difference with DRAM or SSD or HDD since they can all being "mmaped" and do read() and write() over it. However, such simplified 1D array is just an illusion given by cache hierarchy since they are cleaver(or big) enough to know the next piece of data CPU want to grab for most of the time. Unfortunantly, cache hierarchy cannot make 100% prediction on future, and when it predict failed, requests needs to goes into the next level. It can be anything connected to NoC, e.g. UART/RDMA/GPU, but for the most of time, it goes into DRAM.
+## 1. The DRAM Conceptual Model
 
-DRAM has a big difference compare with DFF or SRAM array. DFF and SRAM are all digital signal holder and it's easy to send a request in clock cycle 0 and get the data back in clock cycle 1. It's easy to just open an access transistor and pump the data in/out of it. For DRAM, which operate in capacitor for the purpose of storage density and cost control, doesn't have the self-amplification ability as CMOS. It's also more complex to access data from DRAM compare with access data from DFF/SRAM array. 
+From the perspective of a software programmer, DRAM is just a super long 1D array. Software operates under the illusion of a flat address space, doing basic read and write operations. However, this simplified 1D array is just an illusion maintained by the cache hierarchy. Caches rely on spatial and temporal locality (along with clever memory disambiguity mechanism) to guess the next piece of data the CPU will want. Unfortunately, caches cannot predict the future with 100% accuracy. When there's a cache miss, the request goes to the next level, which is main memory (DRAM) for most of cases.
 
-A single bit storage logic in DRAM would looks like this:
+DRAM is very different from a D-Flip Flop (DFF) or an SRAM array. DFFs and SRAM are digital signal holders; it's easy to send a request in clock cycle 0 and get the data back in clock cycle 1. You just open an access transistor and pump the data in or out. DRAM, however, operates using capacitors to maximize storage density and keep costs low. Capacitors do not have the self-amplification abilities of CMOS transistors, making data access much more complex.
 
-[PICTURE OF 1T1C cell]
+A single-bit storage logic in DRAM looks like this:
 
-Bits(1/0) are stored inside the capacitor in the form of charge. Once the access transistor closed(connected), the charge inside capacitor will be shared with circuit outside through Bitline. Observing the voltage change after connected the access transistor, we can determine if the data inside contain 1 or 0.
+> [Placeholder: Picture of 1T1C cell]
 
-Write procedure to a single cell is also easy. Simply drive the correspond bitline with correct voltage can solve the problem. If we want to write 0 then we drive the bitline with a voltage smaller than Vref so capacitor will share the charge to reach equalibrium. If we want to write 1 then we drive bitline with a voltage higher than Vref so it will charge capacitor to reach the equalibrium. If we want to store the bits inside we just need to open(disconnect) the access transisotr, and charge will be kept inside the capacitor.
+Bits (1 or 0) are stored inside the capacitor in the form of an electrical charge. Once the access transistor is closed (connected), the charge inside the capacitor is shared with the outside circuit through a wire called a **Bitline**. By observing the voltage change after the transistor connects, we can determine if the cell held a 1 or a 0.
 
-Above is the operation to access one single bits in DRAM. However, to access a large amount of data and send them to CPU cache subsystem would require a lot of extra jobs. A typical access sequence to DRAM cell is split into following phases:
+Writing data to a single cell is just as straightforward conceptually. We drive the corresponding bitline with a specific voltage. To write a `0`, we drive the bitline with a voltage lower than the reference voltage (Vref), allowing the capacitor to discharge and reach equilibrium. To write a `1`, we drive the bitline with a voltage higher than Vref to charge the capacitor. Opening (disconnecting) the access transistor traps the charge inside.
 
-```c
-ACTIVATE -> READ/WRITE -> PRECHARGE
+However, accessing large amounts of data to send to the CPU requires extra steps. A typical access sequence for a DRAM cell is split into three phases:
+
+```
+ACTIVATE -> READS/WRITES -> PRECHARGE
 ```
 
-This sequence can be applied on DRAM cell array which looks like this:
+This sequence is applied to a DRAM cell array, which looks like this:
 
-[PICTURE OF DRAM CELL ARRAY]
+> [Placeholder: Picture of DRAM cell array]
 
-During the ACTIVATION phase, the access transistor for a whole row of cell will connect its correspond capacitor with the bitline next to it. Bitlines are all connected with a row buffer which will "buffer" the data in capacitor and they are ready for future READ/WRITE.
+* **ACTIVATION:** The access transistors for an entire row of cells connect their corresponding capacitors to the adjacent bitlines. These bitlines are connected to a "row buffer," which catches and holds the capacitor data, making it ready for a READ or WRITE.
+* **READ/WRITE:** The CPU reads or writes data to/from this row buffer. The row buffer then reflects these changes back into the connected capacitors.
+* **PRECHARGE:** The access transistors close, and the bitlines/buffers are reset to a "default" state, ready for the next ACTIVATE command.
 
-During READ/WRITE phase, CPU can read/write from/to the row buffer, and row buffer will reflect the changes made by CPU into those connected capacitor.
+This is the baseline conceptual model of how DRAM works internally.
 
-During PRECHARGE phase, access transistor will close and buffer will be set into "default" state and ready for next ACTIVATION.
+---
 
-This is a conceptual model of how DRAM works internally.
+## 2. Memory Controllers and DDR Commands
 
-## Memory controller and DDR commands
-As all kinds of storage devices(from DFF array to HDD disk), they are designed as a command receiver which basically receive the requests and bring back data. The way we access DFF array is by pumping it with clock signal and assert R/W port in correct time. For DRAM, we do not have such convenient way to access. Instead, we use specific command to tell DRAM when to do what. These commands is called DDR command.
+Like all storage devices, DRAM is designed as a command receiver. But while we access a DFF array simply by pumping it with a clock signal and asserting a Read/Write pin, DRAM requires specific commands. These are called **DDR commands**.
 
-This can be a weird thing to think about. The way we access memory in C looks like:
-
+This can feel weird to think about. In C, memory access looks like this:
 ```c
 int a = *(int*)addr;
 ```
 
-And even if we write above code into assembly, it would looks like this:
+In assembly, it looks like this:
 
-```
+```c
 ld $t0, 0($a3)
 ```
 
-There's never any "DDR" command on example above, so who use DDR command?
+There are no "DDR commands" here. So who issues them? The Memory Controller (MC).
 
-The answer is memory controller.
-
-Appearantly DRAM itself is not smart enough to understand when CPU said "Please give me data in address 0xdeadbeef". They are optimized for holding as much data as possible and cheap as possible. Typically they do not have the ability to run logics on it. It's relying on CPU to tell what to do next. The command it received from CPU is called DDR command and it looks like this:
+DRAM chips are not smart enough to understand when the CPU says, "Please give me the data at address `0xdeadbeef`. They are optimized to hold massive amounts of data as cheaply as possible; they do not run complex logic. They rely entirely on the CPU's memory controller to tell them exactly what to do. The sequence the MC sends looks more like this:
 
 ```
-ACT row x, READ column y, WRITE column z, PRE(precharge) row x
+ACT row x, READ column y, WRITE column z, PRECHARGE row x
 ```
 
-Precharge can be understood as "close" a row. This is not true as we went further but for now lets assume it's true.
+There is a small component on the CPU die that translates regular memory requests into these DDR command sequences.
 
-There's a small components in CPU side which translate regular memory read/write requests into those sequence of DDR command.
+    [Placeholder: Die shot of Memory Controller]
 
-[DIE SHOT OF MC]
+DDR commands take different amounts of time to execute, as dictated by JEDEC DDR standards. For example, an ACT (Activate) might take 15ns, while a RD/WR (Read/Write) might only take 4ns. The memory controller must manage a queue, tracking exactly what to send and when it is safe to send it, because the DRAM is too "dumb" to manage its own state safely. If MC wants to issue a Read at clock cycle 12, it pushes the request to a queue, and the issuer sends it precisely at cycle 12.
 
-DDR commands also have different execution time. They are written in JEDEC DDR standard and they are always constant. For example, ACT tooks 15ns to execute and RD/WR only takes 4ns. Memory controller should handle both the next command and the timing to issue the next command, since DRAM is too "stupid" to figure out what's going on.
+## 3. DRAM Hierarchy
 
-The way MC issue DDR commands is like a queue. MC will post the command type and when to issue info into a queue, and issuer will send the command out when it's the time. For example, if it's clock 8 right now and I want to issue an RD in clock 12, I will push my request into the queue, and this request will goes out when it's 12 in clock.
+Conceptually, DRAM is a giant matrix of 1T1C (1 Transistor, 1 Capacitor) cells controlled by extremely long wordlines and bitlines. In reality, building such a giant flat matrix is impossible to manufacture cheaply or operate quickly. Therefore, designers split these cells into multiple layers. In traditional DDR4, the hierarchy is: **Channel -> Rank -> Bank Group -> Bank -> Subarray -> Row -> Column**.
 
-It's kinda weird to find each command in DRAM subsystem have a thing called timing. In regular FPGA programming, if we are access one module from another, we only needs a val-rdy handshake to guarantee the timing correctness and data integrity. However, DRAM isn't even cleaver enough to hold massive amount of state of its own banks. In this way, the command sender needs to have some kinds of agreement with receiver, and that's what we called DDR spec (by JEDEC ofc).
+(Note: HBM lacks ranks, and LPDDR lacks bank groups. We will focus strictly on DDR4 here).
 
-## DDR commands timing
+- **Channel**: The highest level of the hierarchy. A channel typically takes up at least one DIMM slot. Two different channels are completely separate pieces of hardware and share no global buses.
 
-There are a lot of timing parameter tied with DDR issue system. They are designed to meet certain kinds of timing&power constraints. This section will explain following DDR timing parameters:
+- **Rank**: A group of DRAM chips (the black squares on the PCB) working together. If you see "DDR4 x16", it means each chip provides 16 bits per cycle. Since a single rank needs to provide a 64-bit data bus to the CPU, you need 4 of these chips (64 / 16 = 4) to form one rank. Only one rank on a channel can actively drive data to the data pins (DQ) at a time.
 
-- tCK
-- tRAS
-- tCAS(tCL)
-- tCWL
-- tRCD
-- tRP
-- tCCD\_S && tCCD\_L
-- tREFI
-- tRFC
-- tRPRE
-- tWPRE
-- tRRD\_S && tRRD\_L
-- tWTR\_S && tWTR\_L
-- tRTP
-- tWR
-- tFAW
+- **Bank Group**: Introduced in DDR4 to increase bandwidth. As capacities grew, address decoders and bus wires became too long and slow. A Bank Group clusters several banks together so they can share local I/O buses and decoders. By alternating commands between different Bank Groups, the memory controller can pipeline requests much faster than sending them to the same group.
 
-There are even more parameters in spec, I just picked some of them that I care the most. 
+- **Bank**: The most important operational hierarchy. A bank consists of multiple subarrays and sense amplifiers. Banks can hold their own independently opened row buffers, though only one bank can drive a Bank Group's output at a time.
 
-The following will just be a re-interpretation of JEDEC spec. Spec didn't tell about what exactly are these timning parameters means(it do have waveform for each of them and a short description inside timing table).
+- **Subarray**: The actual core where the 1T1C matrix lives. A subarray usually has a width of 8K cells and a height of 256 or 512 rows. Each subarray has its own local row buffer (sense amplifiers). If a CPU requests data from a currently open row, it's incredibly fast. If it misses, the bank must precharge the current row and activate the new one.
 
----
+## DDR Commands Timing
 
-***tCK*** is the period of clock signal. DDR memory does not have its own clock generator and it's relying on CPU's DDR interface to provide a reference clock. tCK can be something like 0.83 or 1.07 depends on DRAM frequency.
+Because DRAM can't track its own state safely, the memory controller and the DRAM must follow a strict timing agreement: the JEDEC DDR spec. These parameters exist to meet physical circuit limitations and power constraints.
 
-***tRAS*** stand for "Row Access Strobe". It represent the minimum amount of time between ACT and PRE. This parameter limits MC cannot issue an ACT and PRE back-to-back. It has to wait until the tRAS passed. The reason for such limitation will be explained when we talking about transistor level design.
+Now that we understand the hierarchy (like Bank Groups), these timings will make more sense:
 
-***tCAS***(or tCL) stand for "Column Address Strobe". It measure the latency between the time when MC issue the RD and gets the first beats of data back. Note DRAM have a thing called "burst". This means data are sent in one chunk after one chunk, not all-at-once. ***tCAS*** only measure the latency between RD issued and first chunk of data arrived. It does not measure the whole RD delay.
 
-***tCWL*** stand for "CAS Wrute Latency". From the name we can derive, it's the "***tCAS***" for WR. To be more clear, it define the latenct between issue out WR and the instance when DRAM start the write burst.
+- **tCL(Clock Period)**: DRAM relies on the CPU for its reference clock. tCK is the length of one clock cycle (e.g., 0.83ns or 1.07ns depending on frequency).
 
-***tRCD*** stand for "RAS to CAS delay", it measure the time taken between ACT being issued and row ready for column command. It's easy to confuse with tRAS. The difference is, PRE is not column command, and it needs to wait until tRAS as satisfied, while RD/WR are column command, which only needs to wait until tRCD is satisfied. The reason for this will be covered when we talk about transistor level design.
+- **tRAS(Row Access Strobe)**: The minimum time between an ACT and a PRE command. You cannot open a row and instantly close it; the physical circuits need time to properly share and restore charge.
 
-***tRP*** stand for "Row Precharge". It means the time taken for single PRE command. Be aware the earlist timing to have precharge is tRAS after the last ACT. I will also cover the Precharge operation when we talked about transistor level design for Sense Amplifier.
+- **tCAS or tCL (Column Address Strobe/CAS latency)**: The delay between issuing a READ command and receiving the first chunk of data. Because data is sent in bursts, tCAS only measures the time to the first beat, not the entire transfer.
 
-***tCCD\_S && tCCD\_L*** stand for "Column to Column Delay(Short/Long)". This marks the minimum timing between issue two column command(RD/WR). In this case, MC cannot issue RD/WR command too fast, since that would cause problems in DRAM data integrity. The reason why we need Short/Long marks is the new technology introduced by DDR4 called bank groups. Bank group can be understand as an intermediate layer between channel and bank. Assume we have 32 banks per channel, to have 4 bank groups means we have 8 banks goes into one bank group. Bank groups share teh same address decoder, they also have their own local IO buses and SAs. Bank group are designed to fix the scalability issue of DRAM, as the storage density increase, the corresponding address decoder as well as bus wire also gets bigger. Designer divide whole structure into bank groups to keep boosting DRAM frequency.
+- **tCWL(CAS Write Latency)**: The write equivalent of tCAS. The time between issuing a WRITE and when the DRAM expects the first chunk of data.
 
-It's faster for two RD to goes into different bank groups other than same one, because they do not have to share the same decoder and same local bus(still share the global bus since there's only one global bus, but it's okey). In this case, ***tCCD\_S*** is the minimum latency between two column command being issued when they target on different bank group, and ***tCCD\_L*** is the the minimum latency between two column command being issued when they target on same bank group.
+- **tRCD(RAS to CAS Delay)**: The time between issuing an ACT command and when the row is actually ready to accept READ/WRITE (column) commands.
 
-***tREFI*** stand for "Refresh Interval". As the name reveal, it stand for how often a REFRESH command must be issued. As you probably already know, DRAM is neither self-amplified storage as SRAM/DFF nor permanent storage media like magnetic tape(or carving words on stones?). It needs to constantly read out what it got and re-amplify them. ***tREFI*** marks the period of doing such operation.
+- **tRP(Row Precharge)**: The time it takes to execute a PRECHARGE command, safely closing the row and resetting the bitlines.
 
-***tRFC*** stand for "ReFresh Cycle time". It stand for the time taken for DRAM to perform refresh. When DRAM performing refresh, no other DDR commands can be served and DRAM is basically passed away for ***tRFC*** amount of time.
+- **tCCD\_S & tCCD\_L (Column to Column Delay - Short/Long)**: The minimum time between issuing two column commands. `tCCD_S` is shorter because the two commands target different Bank Groups (less hardware conflict). `tCCD_L` is longer because they target the same Bank Group, forcing them to share local routing and decoders.
 
-***tRPRE*** stand for "Read PREamble time", which marks the pre-sampling delay from higher level. This is an internal timing parameter for interfacing which sit inside tCAS. The reason why we need to wait a while between data valid and sampling start is, DQ(data pin) are synchronized with DQS, but CK is the clock signal when we talked about DRAM operation like ACT/PRE/RD/WR. CK needs to travel a really long route from cpu to every DRAM chip, which can have serious clock skew problem. This means the CK we referred in sampling logic is not reliable for high-speed signal. In this case, DDR gives us another new clock signal called DQS. As the name suggested, it's the Sampling clock for DQ. DQS ***tRPRE*** is the time taken for DRAM to reset sampling logic and it's necessary for safe sampling to valid data.
+- **tREFI(Refresh Interval)**: How often a REFRESH command must be issued. Because capacitors leak charge over time, they must be periodically read and rewritten.
 
-***tWPRE*** stand for "Write PREamble time". It's basically same as tRPRE. The only place to notice is, DQ is a bidirectional signal wire, so for each column command, we need to go through the complete reset procedue of sampling. This means, both tRPRE and tWPRE is a part of tCAS.
+- **tRFC(Refresh Cycle Time)**: The time it takes for the DRAM to actually perform the refresh operation. During this time, the DRAM is essentially offline and cannot serve read/write requests.
 
-There appearantly needs some CDC designs done to bridge two clock domain together. However, DRAM vendors are always slient on what exactly happening under the hood so we cannot know(We can make best guess tho). There are some research about DRAM reverse-engineering, but they mainly focused on subarray level design instead of interfacing. I'll talk about that research in this blog. And I really hope either vendor release more DRAM internal designs, or someone use SEM(scanning electron microscopy) to peel the DRAM and look it up.
+- **tRPRE & tWPRE(Read/Write Preamble)**: The clock signal (CK) travels long distances and suffers from skew. Therefore, data relies on a separate data strobe signal (DQS). The preamble is the time taken to reset and align the sampling logic for DQS before data transmission begins.
 
-***tRRD\_S && tRRD\_L*** stand for "Row to Row Delay(Short/Long)". It measure the minimal time between two success ACT being issued. ***tRRD\_S/L*** bound the frequency of issue ACT into different bank. Just like ***tCCD\_S/L*** differ the access into same/different bank group, ***tRRD\_S/L*** also differ the ACT goes into same/different bank group. The reason is also the same: different bank groups can have less confliction in parts use.
+- **tRRD\_S & tRRD\_L(Row to Row Delay - Short/Long)**: The minimum time between two successive ACT commands. Like tCCD, it is shorter for different Bank Groups and longer for the same Bank Group.
 
+- **tWTR\_S & tWTR\_L (Write to Read Delay)**: The delay required if you want to READ immediately after a WRITE. The data from a WRITE must be safely driven into the sense amplifiers and back into the physical capacitors ("Write Recovery") before a new READ can safely occur.
 
-***tWTR\_S && tWTR\_L*** stand for "Write to Read delay(Long/Short)". It represent the minimum time delay for a RD after WR. For a RD after WR which falls into same bank group will be delayed for ***tWTR\_L***. If RD after WR falls into different bank group, they are going to be delayed for ***tWTR\_S***. The reason why we have this delay is, WR command actually write to local SA of target subarray, and it tooks a while to let the data re-amplify and store safely into 1t1c cell. This process is also called "Write Recovery". It means once CPU write something back, it also recharge the cell and protect it from wear-out.
+- **tRTP (Read to Precharge)**: Ensures the memory controller doesn't issue a PRECHARGE while a READ is still happening, which would flush the data out before it finishes transmitting.
 
-***tRTP*** stand for "Read to Precharge delay". It represent the time delay from RD being issued and the point where PREC can be safely carried out. The reason is that, if we do not have this kinds of restriction, MC can issue precharge during the middle of RD. It's like you just enabled the wordline and precharge signal comes in and flush all you got in the cell. tRTP prevent this happen by delay next precharge into a time point when it can be safely carried out.
+- **tWR (Write Recovery Delay)**: The time from the end of a write burst to when a PRECHARGE can be safely issued. If you precharge too early, the bitlines reset before the new charge is fully locked into the capacitors, causing data loss.
 
-***tWR*** stand for "Write Recovery delay". It measure the delay from the end of write burst to the point where MC can safely precharge DRAM. This is a little bit different from ***tRTP***. It's because DRAM write operation including the time signal travel from DQ to local SA plus local SA amplify data and charge it back to cell. If we immediately precharge the SA after the last write, what might happen is precharge signal will arrive when last data is being written but not yet amplified back. This can cause data loss. ***tWR*** will hold the precharge after WR for a while to let charge completly recovered into cell storage.
+- **tFAW (Four-Activate Window)**: A rolling time window that limits the memory controller to a maximum of four ACT commands within a specific timeframe. This is primarily to prevent drawing too much current at once and overloading the Power Delivery Network (PDN).
 
-***tFAW*** stand for "Four-Activate Window".  It's the time window which limits the number of activated bank in a channel. For example, if tFAW is 20 and at t=12 we already got 4 activated rows. If MC wants to activate another row within this channel at t=16, it have to wait until t >= 20 to issue the new activation. SPEC didn't tell why this exists, but people assume it's because we don't want to stress PDN too much.
+## The Conceptual Model for Subarrays
 
+The subarray is the actual matrix of 1T1C cells. Conceptually, when we want a cache line (64 bytes) from DRAM, an entire row (usually 8Kb) in the target subarray is activated, and the DRAM plucks the target cache line out of that row.
 
-## DRAM hierarchy
-Conceptually, DRAM is a giant big matrix of 1t1c cell controlled by extremly long wordline and bitline. However, such design is not possible to manufactured within acceptable price. In this case, DRAM designer split huge amount of 1t1c cells into multiple layers. In traditioanl DDR4 memory, they are: Channel, Rank, Bank Group,  Bank, Subarray, Row, Column,
+    [Placeholder: Subarray Picture]
 
-In other types of memory, there might be some difference compare to DDR4. For example HBM does not have rank, and LPDDR does not have bank group. This blog will focus on DDR4 so all below hierarchy are all in DDR4. I will talk about HBM more in next blog.
+When the DRAM needs to access a different row, it must first precharge. The precharge controller electronically disconnects the active capacitors to trap their charge, then drives the bitlines back to a reference voltage by shorting the amplifiers. After tRP, the MC issues a new ACT command, connecting a new row of capacitors to the bitlines. The charge flows into the local row buffer (an array of Sense Amplifiers) and is latched there.
 
-### Channel
-Channel is the up-most hierarchy of DRAM. It usually takes at least 1 DIMM slot, and there's no restriction in issuing commands into two different channel. They are completly deparate hardware and do not share any global bus (if we ignore the internal DIMM bus inside CPU).
+A column selection logic controls which specific part of that 8Kb local row buffer is routed out to the global bitline (bank interface).
 
-### Rank
-Rank can be understood as a group of DRAM chip. DRAM chip is the black square you can found on DRAM pcb. You probably saw some DRAM parameter like ddr4 x16 3200. The x16 inside means each DRAM chip is able to provide 16bits at once. However, a single rank needs to provide 64bits output. In this case, we can calculate how many chips in one rank by using 64 / 16 = 4. Ranks are the driver for DQ pins, and there are at most one active rank at any time. CS# is the signal that MC used to select the target rank.
+Normally, one subarray can only have one activated row, and one bank can only have one activated subarray. Activating multiple rows/subarrays simultaneously would result in uncontrolled charge sharing and corrupted data. This basic conceptual model is enough to explain famous phenomena like Rowhammer attacks or ComputeDRAM. But if you want to understand real DRAM design, we need to go deeper.
 
-### Bank Group
-Bank group is a new hierarhcy introduced by DDR4. It groups multiple banks together and they will share the same address decoder as well as same global data/control line. The reason is that DDR4 wants higher bandwidth compare with DDR3, but the frequency of bank is not really easy to increase (to be clear, it should be core frequency instead of bank frequency. But we haven't talked about DRAM core yet so we will use bank frequency here). Splitting banks into multiple bank groups can allow commands going to different bank group does not need to be constraints too much. For example, two column commands can pipeline the use of decode logics if we split into bank group. Without bank group, the second column command needs to wait for the first one finish and let it use the address decoder. Banks inside bankgroup do not operate in lock step. This means only one bank will be the driver of the bank group's output at anytime.
+## Breaking the Subarray Conceptual Model
 
-### Bank
-Bank is the most important hierarchy in DRAM architecture. It consist of multiple small subarrays and sense-amplifier which is able to amplify and latch the result coming from those subarrys. Just like bank group, there can still be some parallism between bank and bank. For example, the banks in the same bank group can hold their own row buffer, but there can only be one bank be the driver for bankgroup's output.
+Actually, a lot of the conceptual model above doesn't happen quite like that in the real world. Once you dive into custom subarray-level DRAM design, hidden constraints emerge.
 
-### Subarray
-Bank are made of subarray. Subarray is the actual place where you can see the matrix of 1t1c cell. Subarray usually have 8k width and 512/256 heights. Each subarray also comes with 8k sense-amplifier which is able to amplify and latch the charge in activaated row. This is what we call local row buffer. The column command over local row buffer is really fast, but if program missed this row buffer, subarray needs to precharge the current SA and activate the target row.
+### Incorrect Assumption 0: The Subarray is the lowest level of the hierarchy
 
+It would be neat if the subarray were the final level. However, a single activation signal cannot travel down an 8K-cell-wide wordline without losing signal integrity. Furthermore, dedicating a massive wordline driver to every single row is not area-efficient. Instead, vendors(afaik) divide subarrays into multiple **MATs**.
 
-## Conceptual model for subarray
+    [Placeholder: Picture of MATs in subarray]
 
-Subarray as the "core" of the DDR DRAM, which mean it is the place where data actually sitting in. As what we've covered previously, subarray basically is a matrix of 1t1c cells. Conceprually, when we want to access one cacheline of data from DRAM, a whole row from the target subarray will be activated, and DRAM select target data from the activated row. A row usually contain 8Kb data, but what CPU usually want for single access is just a cacheline of data(64bytes). 
+MATs are smaller squares of bitcells. Multiple MATs stack together to form a subarray. To increase density, vendors split wordlines into **Main Wordlines** and **Sub-Wordlines**. For example, out of 512 rows, there might be 256 main wordlines and 2 sub-wordlines. These feed into an AND gate local to the MATs. A row is only driven when both the main and sub-wordline select it.
 
-Here is a conceptual figure of what is subarray:
+    [Placeholder: Picture of Main/Sub-Wordlines]
 
-[SUBARRAY PICTURE]
+**The Implication**: We cannot have fine-grained control over row activation. If we want to activate Row 0 and Row 3, but they share wordline logic with Row 2, we physically cannot activate them without also activating Row 2. Many academic proposals assume fine-grained activation is possible, but in reality, they would have to account for extremely specific data placement to work around this hardware limitation.
 
-Once DRAM needs to access another row of data, it will first precharge currently activated row. During the precharge phase, precharge controller will electronically disconnect the currently activated bitcell with bitlines to retain data within capacitor, then it drive whole bitline into reference voltage by shorts the amplifier. After ***tRP*** amount of time, memory controller will issue an ACT command which will activat another row of bitcells by connecting a whole row of bitcells with bitlines, then charge will flows into local row buffer and being latched there.
+### Incorrect Assumption 1: Subarrays have isolated row buffers
 
-Column select logic will control whether to connect the output of local rowbuffer up to global bitline(bank interface). Local row buffer is basically an array of Sense-Amplifier. Sense amplifier is able to amplify the voltage, but it also behave like an latch(tbc, it's actually a SR latch, but drived with a reference voltage). For now we just assume they are some special latch array which latch the output of activated row so they can be selected by column select logics.
+In our conceptual model, each subarray has its own dedicated row buffer. In reality, to save space, modern open-bitline architectures put half of the sense amplifiers on one side of a subarray and let the adjacent subarray share them.
 
-Normally, one subarray can only have one activated row, and one bank can only have one activated subarray. Having multiple activated subarrys in one bank will result in charge sharing and undetermined behavior. 
+    [Placeholder: Picture of SA Sharing]
 
-One bank group can have multiple activated banks, but there's ***tFAW*** timing constraints to control the time window for 4 activated banks.
+Another reason for this is that sense amplifiers need a reference voltage (Vref) to detect tiny voltage perturbations. DRAM uses the idle, precharged bitline from the adjacent subarray as this reference. Therefore, if Subarray B is activated, Subarrays A and C lose half of their bandwidth because their bitlines are being used as a Vref for Subarray B.
 
-This subarray model is able to explain a lot of famous application of DRAM, for example, rowhammer[CITE] attack and computeDRAM[CITE]. If you just want to know how does DRAM works conceptually then here is the end.
+**The Implication**: If a paper proposes activating multiple specific subarrays simultaneously, it will fail if those subarrays are adjacent and rely on shared sense amplifiers.
 
-## Break the conceptual model for subarray
+### Incorrect Assumption 2: The Global I/O (GIO) bus is wide
 
-Acutally, all things above are wrong...
+The GIO connects the subarray's column selection logic to the bank interface. Diagrams often depict it as a massive bus. In reality, bank interfaces are incredibly small to save physical area. Moving data between subarrays over this narrow bus requires sending it in tiny chunks, latching it at the bank level, and trickling it into the target subarray. It entirely bottlenecks the massive internal bandwidth of the subarray itself.
 
-The conceptual model can be used to explain most behavior of DRAM from the high level perspective. But once we need to customize subarray level DRAM design, there are a lot of place above doesn't really happen in real world.
-
-### Incorrect place 0: Subarray is not the last level of DRAM hierarchy
-It would be super neat if subarray is the last level. However, activation signal cannot travel all way down to 8k cells through wordline without lose it's signal integrity. Also, to have one wordline for every single row is not area efficient. In this case, DRAM vendor (afaik) further divided subarray into multiple MATS.
-
-[PICTURE OF MATS IN SUBARRAY]
-
-MATS can be imaged as a square of bitcells. Multiple mats stacked together to form a subarray. To further increase the storage capacity, vendor divided all wordlines into main wordlies and sub wordlines. Assume we have 512 rows, then we got (512/2 == 256) main wordlines and 2 sub-wordlines. Both main-wordlines and sub-wordlines are being feed into an AND gate per two mats. this AND gate can amplify the signal and drive the target rows when it's being selected by both main wordline and sub wordline.
-
-[PICTURE OF MAIN/SUB-WORDLINES]
-
-The implication behind this observation is, we cannot have fine-grain control of the row activation even if we hacked into subarray. For example, assume we only have 4 rows: 0, 1, 2, 3, and we have 4 wordlines: one for 0, 1, and one for 2, 3. Plus we also have 2 sub-wordline to select between main wordline. There is no way to activate row 0 and row 3 without activate row 2. Here is a picture to demonstrate this scenario:
-
-[PICTURE OF ACT CONFLICTION]
-
-A lot of DRAM design proposal assume fine-grain activation. Tbf they are all valid idea. The only problem is they also need to work on the special data placement inside DRAM to address this issue.
-
-### Incorrect place 1: Subarray row buffer(Sense amplifier) is being shared by adjacent subarray
-
-In previous description, each subarray has its own local row buffer. However, due to the needs of DRAM capacitor, having independent local row buffer for each subarray is not area effiicent. In this case, in open-bitline architecture(most wildly used DRAM architecture today), vendor choose to put half of the row buffer in one side of subarray and let adjacent subarray share it. The layout looks like this:
-
-[PICTURE OF SA SHARING]
-
-Another reason why split in this way is, sense amplifier needs to have a Vref to amplify the small pertubation. DRAM will use the idle(precharged) bitline from the adjacent subarray as the input of reference voltage. In this case, if one subarray is holding activated data, two adjacent subarray will lost half of its bandwidth. Here is an picture to illustrate this scenario:
-
-[PICTURE OF ONE ACTIVATED SUBARRAY AND TWO IDLE NEIGHBOR]
-
-This limination will constraints all the proposal mentioned about fine-grain subarray control. Same as Incorrect 0, they need to be clear on data placement.
-
-### Incorrect place 2: GIO is smaller than what present in picture
-
-GIO is the place where subarray's column selection logic output its result. It's being depicted as a bus to connect multiple subarray together, and sometime people think it's gonna be super cool to directly communicate through this bus. However, the bank interface is really small and due to the needs of storage capacity(Again???), this bus is really small. If we want to communicate within this narrow bus, each chunk of data needs to be sent out and latched at bank level amplifier. Then you can activate the target subarray's row and choose the correct place to write to. This procedure takes a long time and doesn't utilize the high bandwidth provided by subarray at all:
-
-[PICTURE OF NARROW GIO]
-
-If we really want in-bank communication, we need to add extra hardware to do this. LISA[CITE] is a good example, but it has more hidden constraints we'll cover later.
+    [Placeholder: Picture of Narrow GIO]
 
 ---
 We can see, subarray level design should be carried out in cautions. We can have all crazy designs, but we need to be careful on these hidden constraints and clarify our assmption.
@@ -245,4 +195,89 @@ We can see, subarray level design should be carried out in cautions. We can have
 This is not even a full list of constraints. More constraints will be reveal in future chapters when we talked about transistor level design and reverse-engineering of today(2026)'s commercial DDR DRAM.
 
 
-## Sense Amplifier
+
+## The Sense Amplifier
+
+The Sense Amplifier (SA) is the unsung hero of DRAM. Because a tiny capacitor only creates a minute voltage perturbation on a bitline, an SA is required to sense that tiny change and amplify it into a full-swing digital signal (VDD or 0) to drive peripheral logic.
+
+Here is a full picture of a traditional SA:
+
+    [Placeholder: Picture of Full SA]
+
+Eww..., that's a lot. Maybe we can divide them into smaller parts.
+
+A typical SA consists of three parts: a **cross-coupled amplifier**, a **precharge circuit**, and a **column selection circuit**.
+
+
+### Cross-Coupled Amplifier
+
+[Placeholder: Picture of Cross-coupled amplifier]
+
+This consists of two cross-coupled NOT gates. Right before amplification, the Bitline (BL) and inverse Bitline (BLB) are precharged to exactly `VDD/2`. When the wordline opens, the capacitor causes a slight voltage shift on the BL. We then pull the P-sense and N-sense amplifier nodes to full VDD and 0. Because of the cross-coupled nature, the side with the slightly higher voltage turns on its transistor faster, creating a positive feedback loop. Rapidly, the tiny perturbation is slammed into a full digital 1 or 0, effectively latching the data.
+
+The device level design ensure the transistor used in sense amplifier would have a high enough gain by the choice of materials and length of wires. I will add more details on this part once I figured out how to write latex inside markdown :)
+
+Another thing need to be noticed is there's only one BL can be sensed at one time, as another BL need to be functioned as reference voltage and need to remain the same.
+
+### Pecharge Circuit
+
+[Placeholder: Picture of Precharge circuit]
+
+It's a piece of deadly simple circuit, which basically shorts both BL and BLB with `Vblp` when EQ(Equalizer) is on. `Vblp` is always in `VDD/2` so as we can see the mission of precharge circuit is to set a initial state of amplifier so the small pertubation on BL will be "catched" by the NMOS.
+
+Although it looks easy, precharge operation can be really slow during the actual use. BL usually are really long wire in the design of DRAM so each unit length of BL can have some parasite capacitance on it. The procedure of precharge usually needs to discharge the parasite capacitor one by one, which can be a main influence on circuit performance when the design scale up.
+
+### Column seletion circuit
+
+[Placeholder: Picture of Column selector]
+
+There really isn't a lot to talked about in Column Selection Unit. It's basically just two NMOS act like a switch to control the output of amplifier. Many tutorials would even skip it due to its simplicity. However, there's a really intersting story I would like to share about this circuit in the chapter below about it.
+
+---
+When we put all three parts above together, we can see the sense amplifier actually behave as a latch. In fact, this is the main reason why we can have fast read/write when DRAM row buffer hit. When we are accessing to the address which being mapped into a group of already-opened sense amplifier, it's basically just like the access to a latch array. But if we are accessing to the address which is not inside any already-opened sense amplifier, we need to repeat the procedure of PRECHARGE and ACTIVATE.
+
+Another thing we can see is by the time we RD/WR data from/to the amplifier, the change will be reflected back to the BL. As WL keeps open during the RD/WR. voltage change in BL being reflected back to DRAM capacitor. In this case, MAT level DRAM cell can actually response to RD/WR in almost immediately. It's only the PRECHARGE and ACTIVATE cause most of the latency during the random DRAM access.
+
+## DRAM Repair
+
+Like CPUs and GPUs, DRAM chips are not immune to manufacturing defects. When Intel or AMD find a flawed core or L3 cache block, they simply fuse it off and sell the chip as a lower-tier product.
+
+DRAM relies on extreme cost-efficiency, so adding complex testing/muting logic per MAT is too expensive in terms of area, and throwing away an entire bank for one dead cell is wasteful. The solution is DRAM Repair via Redundancy.
+
+Manufacturers build slightly more rows and columns than the spec requires. During factory testing, if a defective cell is found, the manufacturer permanently fuses off that row or column and programs the address decoder to reroute traffic to a redundant row/column.
+
+    [Placeholder: Picture of DRAM Repair]
+
+**The Implication**: The CPU never actually knows which physical row it is accessing. A physical address map might calculate that data lives in Row 10, but if Row 10 was repaired at the factory, the data might actually be sitting in Redundant Row 515. This ruins certain In-Memory Computing proposals (like RowClone) that require precise physical alignment of data, because the user cannot guarantee where the data physically resides.
+
+Again, DRAM vendors are always slient about this fact so it's really hard for us outside fab to know what kinds of repair are they really using. Some of them might have subarray level repair which only map defected rows within subarray, while others might have bank level repair which re-route defected rows into another subarray.
+
+
+## DRAM Chip-Level Reverse Engineering
+
+While papers like DRAMScope do "soft" reverse engineering by sending custom DDR command sequence via FPGA to map out behaviors, physical reverse engineering is much rarer. A fascinating paper published in ISCA '24, HiFi-DRAM, used Scanning Electron Microscopy (SEM) and Focused Ion Beam (FIB) to physically slice open a modern DRAM chip layer by layer like lasagna and photograph its actual layout to create a 3D model of their ROI(btw it's a wrong way to enjoy lasagna ;)).
+
+### OCSA (Offset-Cancellation Sense Amplifier)
+
+The paper revealed that modern DDR5 memory has moved away from the traditional SA design. In theory, NMOS and PMOS transistors are perfectly symmetric. In reality, manufacturing variance causes their threshold voltages (Vth) to differ. This mismatch can cause the SA to latch the wrong value when sensing a tiny capacitor charge.
+
+To fix this, modern DRAM uses an Offset Canceling SA (OCSA). Before charge sharing occurs, the circuit briefly connects the gates and drains of the transistors, forcing them to balance their voltages to perfectly match their unique physical Vth, canceling out manufacturing variations.
+
+[Placeholder: Picture from paper of OCSA]
+
+### Column Select Circuit (CSL) Placement
+
+Remember the Column Selection Unit from Chapter 7? Standard diagrams show it placed after the amplifier. However, HiFi-DRAM discovered that physical layouts often place the bit selection unit before the amplification stage. This limits power consumption and allows manufacturers to use a more unified choice of CMOS devices that match specific voltage tolerances, simplifying fabrication.
+
+[Placeholder: Picture from paper of CSL]
+
+---
+This is a really interesting paper and I encourage everyone who interested in DRAM to read it. Another reason I choose this paper is it's published in ISCA'24 and is relativelty new by the time when this blog was written.
+
+## Finale
+Many software developers view DRAM as "not important" because it lacks the architectural glamour of a CPU or GPU. However, DRAM is a perfect example of how an ideal, conceptually simple circuit faces a mountain of complex physical, timing, and manufacturing constraints when scaled up to real-world products.
+
+This blog is only a small glance into the complex world of VLSI and physics. I will find a chance to write about HBM and GDDR in the future, as they follow completely different design stories, constraints, and purposes. Most importantly, they are terribly cool.
+
+## Updates
+(This section is reserved for updates after the blog is published)
